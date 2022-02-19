@@ -103,7 +103,7 @@ of "show":
       echo "$1 $2: $3 commented,\n" % [commentSeparator,
                                        c.date.format("yyyy-MM-dd"),  c.name]
       for line in c.text.split({'\n'}):
-        if not line.startsWith("="):
+        if not line.startsWith("=> "):
           echo "> ", line
         else:
           echo line
