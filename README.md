@@ -1,6 +1,6 @@
 # Nimlike
 
-A CGI-based likes and comment system for the [Gemini](https://gemini.circumlunar.space/) protocol, inspired by [gemlikes](https://github.com/makeworld-the-better-one/gemlikes/).
+A CGI-based likes and comments system for the [Gemini](https://gemini.circumlunar.space/) protocol, inspired by [gemlikes](https://github.com/makeworld-the-better-one/gemlikes/).
 
 This is *slightly* less of a toy project than gemlikes claims to be, meaning that it still probably won't stand up to any true loads and has obvious shortcomings, but all of the things that I didn't like about gemlikes were rectified. Namely:
 
@@ -9,7 +9,8 @@ This is *slightly* less of a toy project than gemlikes claims to be, meaning tha
 * Page titles on comment pages are read from actual pages, and filenames are used only if the actual pages don't have a level 1 header.
 * Comments can contain newlines and links.
 * What passes for a database is more resilient to user input.
-* Comments require a client certificate to enter, likes do not. Comments handle nicknames more gracefully, and allow newlines and links.
+* Comments require a client certificate to enter, likes do not.
+* Comments handle nicknames more gracefully.
 * When a nickname isn't given, a nickname for comment author is extracted from their certificate itself, if possible.
 * Identifying markers of comment authors -- that is, client certificate hashes -- are further hashed with a salt, and rendered as a string of emoji, preventing impersonation of people who wrote comments previously.
 * You don't have to keep the configuration file inside gemini server root, so nobody can read your salt or learn things about your directory structure from it.
@@ -34,23 +35,23 @@ This results in a single `nimlike` binary which goes into your server's cgi-bin 
 
 * Your Gemini server must support CGI. Obviously. Not all of them do.
 * It must correctly follow the [CGI standard](https://datatracker.ietf.org/doc/html/rfc3875). In particular, it must handle [PATH_INFO](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.5) and [SCRIPT_NAME](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.13) variables properly.
-* While there's no gemini standard for gemini-specific variables -- some things in the CGI standard obviously don't apply, while there's some debate on where the things specific to Gemini, like client certificate information, should go -- `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate, and either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must contain with certificate identification string. `TLS_CLIENT_HASH` must contain the certificate hash.
+* While there's no gemini standard for gemini-specific variables -- some things in the CGI standard obviously don't apply, while there's some debate on where the things specific to Gemini, like client certificate information, should go -- `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate, and either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must contain a certificate identification string -- the one that looks like `/CN=foo/emailAddress=....`. `TLS_CLIENT_HASH` must contain the certificate hash.
 
-To my knowledge, [Molly Brown](https://tildegit.org/solderpunk/molly-brown) and [gmid](https://github.com/omar-polo/gmid) both qualify, but there's a lot of gemini servers out there and I don't know if yours does. If a given popular server does something else with this information, I could see about adapting nimlike to handle it as well, but no promises. As long as it passes on everything required, it can be done.
+To my knowledge, [Molly Brown](https://tildegit.org/solderpunk/molly-brown) and [gmid](https://github.com/omar-polo/gmid) both qualify, but there's a lot of gemini servers out there and I don't know if yours does. The only one actually tested with so far is gmid. If a given popular server does something else with this information, I could see about adapting nimlike to handle it as well, but no promises. As long as it passes on everything required, it can be done.
 
 The other assumptions are:
 
 * Every file you might want to comment on is accessible under server root, at a path that will be present in its actual URL. I.e. that there is a one-to-one URL/filename correspondence, at least for files that need access to the comment system.
-* All of the file names for such files will fit one regular expression.
-* If you're using pretty URLs -- that is, do things like pointing an url at `/my-cool-post/` while the actual file the post is in is `/my-cool-post/index.gmi` -- that the default file to be served is indeed named `index.gmi`. Yes, it should work even in that situation.
+* All of the file names for such files will match one (configurable) regular expression.
+* If you're using pretty URLs -- that is, do things like pointing an url at `/my-cool-post/` while the actual file the post is in is `/my-cool-post/index.gmi` -- that the default file to be served is indeed named `index.gmi`. It should work even in that situation, but `index.gmi` is currently hard-coded.
 
-Failure to observe these assumptions will only mean that for files that don't fit them, nimlike will show an error 59 instead of a comment page.
+Failure to observe these assumptions will only mean that for files that don't fit them, nimlike will show an error 59 instead of a comment page, so depending on how your site is organized, they may be a deal-breaker or completely irrelevant.
 
 ## Abuse resistance
 
-There is currently very little of that, but client certificates should at least discourage casual spamming a little. A post can only be liked by one IP address, but that's about it.
+There is currently very little of that, but client certificates should at least discourage casual spamming a little. A post can only be liked by a given IP address once, but that's about it.
 
-I am of a mind that, barring the obvious security holes, reacting to people actually engaging in abuse, rather than preventively trying to block things they *might* try to do, makes more sense for a hobby tool like that.
+I am of a mind that, barring the actual security holes, reacting to people actually engaging in abuse, rather than preventively trying to block legitimate things they *might* try to do too much, makes more sense for a hobby tool like that.
 
 That said, it is very much recommended to disallow access to `nimlike` in your `robots.txt`:
 
@@ -118,7 +119,7 @@ At the moment, if you don't like the particular rendering of the comment page, y
 
 ## Configuration
 
-On startup, nimlike looks for a configuration file. If the environment variable `NIMLIKE_CONFIG_FILE` is set to a file name, (full path please) configuration will be loaded from there. Gmid, for one, allows you to set CGI environment variables in server config, and others might have a similar feature -- or, if they pass their own environment variables to their cgi children, you could set it above them.
+On startup, nimlike looks for a configuration file. If the environment variable `NIMLIKE_CONFIG_FILE` is set to a file name, (absolute path please) configuration will be loaded from there. Gmid, for one, allows you to set CGI environment variables in server config, and others might have a similar feature -- or, if they pass their own environment variables to their cgi children, you could set it above them.
 
 Otherwise, the file named `nimlike.ini` will be sought in the current directory, wherever that is. I'll just quote it here for ease of reading:
 
@@ -140,8 +141,8 @@ server_root=/home/mihara/Projects/blog/gemini/
 data=/home/mihara/Projects/blog/gemini-nimlike/
 
 ;; Regexp to tell commentable files from non-commentable in a generic way. If
-;; it matches the filename, comment is allowed, unless it matches any of the
-;; forbid regexps below.
+;; it matches the filename, comment is allowed, unless it also matches any of
+;; the forbid regexps below.
 ;;
 ;; Needs to be written with r"" like that to work, that's Nim syntax.
 ;; The syntax for the regular expression itself is standard PCRE.
@@ -157,11 +158,11 @@ anonymous = Anonymous
 ;; A list, one per line, of URL regexps, leading slash excluded, on which comments
 ;; and likes are forbidden.
 ;; I use it to exclude pages like tag and post lists.
-r"archive.gmi"
-r"tags.gmi"
-r"index.gmi"
-r"categories/.*"
-r"tags/.*"
+r"^archive.gmi"
+r"^tags.gmi"
+r"^index.gmi"
+r"^categories/.*"
+r"^tags/.*"
 ```
 
 I believe the above comments are sufficient to explain what does what. You can also check out the extensively commented source code.
