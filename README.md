@@ -34,14 +34,14 @@ This results in a single `nimlike` binary which goes into your server's cgi-bin 
 
 * Your Gemini server must support CGI. Obviously. Not all of them do.
 * It must correctly follow the [CGI standard](https://datatracker.ietf.org/doc/html/rfc3875). In particular, it must handle [PATH_INFO](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.5) and [SCRIPT_NAME](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.13) variables properly.
-* While there's no gemini standard for gemini-specific variables -- some things in CGI standard obviously don't apply, while there's some debate on where do things specific to Gemini, like client certificate information, should go -- `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate, and either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must be filled with certificate identification string.
+* While there's no gemini standard for gemini-specific variables -- some things in the CGI standard obviously don't apply, while there's some debate on where the things specific to Gemini, like client certificate information, should go -- `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate, and either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must contain with certificate identification string. `TLS_CLIENT_HASH` must contain the certificate hash.
 
-To my knowledge, [Molly Brown](https://tildegit.org/solderpunk/molly-brown) and [gmid](https://github.com/omar-polo/gmid) both qualify, but there's a lot of gemini servers out there and I don't know if yours does. If a given popular server does something else, I could see about adapting nimlike to handle it as well, but no promises.
+To my knowledge, [Molly Brown](https://tildegit.org/solderpunk/molly-brown) and [gmid](https://github.com/omar-polo/gmid) both qualify, but there's a lot of gemini servers out there and I don't know if yours does. If a given popular server does something else with this information, I could see about adapting nimlike to handle it as well, but no promises. As long as it passes on everything required, it can be done.
 
 The other assumptions are:
 
 * Every file you might want to comment on is accessible under server root, at a path that will be present in its actual URL. I.e. that there is a one-to-one URL/filename correspondence, at least for files that need access to the comment system.
-* All of the file names for such files will fit one regular expression. (PCRE syntax)
+* All of the file names for such files will fit one regular expression.
 * If you're using pretty URLs -- that is, do things like pointing an url at `/my-cool-post/` while the actual file the post is in is `/my-cool-post/index.gmi` -- that the default file to be served is indeed named `index.gmi`. Yes, it should work even in that situation.
 
 Failure to observe these assumptions will only mean that for files that don't fit them, nimlike will show an error 59 instead of a comment page.
@@ -50,7 +50,7 @@ Failure to observe these assumptions will only mean that for files that don't fi
 
 There is currently very little of that, but client certificates should at least discourage casual spamming a little. A post can only be liked by one IP address, but that's about it.
 
-I am of a mind that barring the obvious security holes, reacting to people actually engaging in abuse, rather than preventively trying to block things they *might* try to do, makes more sense for a hobby tool like that.
+I am of a mind that, barring the obvious security holes, reacting to people actually engaging in abuse, rather than preventively trying to block things they *might* try to do, makes more sense for a hobby tool like that.
 
 That said, it is very much recommended to disallow access to `nimlike` in your `robots.txt`:
 
@@ -98,7 +98,7 @@ This also neatly illustrates some of the distinctive capabilities of nimlike.
 
 ## Usage
 
-Assuming a file *located at* `/foo/bar/my-cool-post.gmi` (rather than just named `my-cool-post.gmi` as you would need to do with gemlikes) needs comments and likes, put a link in it:
+Assuming a file *located at* `/foo/bar/my-cool-post.gmi` (rather than named `my-cool-post.gmi` which is what would be relevant to gemlikes) needs comments and likes, put a link in it:
 
 ```
 => /cgi-bin/nimlike/show/foo/bar/my-cool-post.gmi View comments and likes
@@ -108,9 +108,9 @@ To be more precise, the requisite URL is `<path to nimlike executable>/show/<ful
 
 ## Internals
 
-Database, or what passes for it, is stored in [jsonl](https://jsonlines.org/) files -- that is, blocks of compressed JSON separated by newlines. Similarily, records of likes are one-IP-address-per-line text files with a trailing newline. There hardly is a need for a true database in this application -- my comment system for my html blog, which shares a lot of design ideas with nimlike, doesn't have one either. The big difference is that there, frontend reads the jsonl files directly and takes care of rendering, so less sensitive information is stored. There's no frontend in Gemini space, so nimlike takes care of it by itself.
+Database, or what passes for it, is stored in [jsonl](https://jsonlines.org/) files -- that is, blocks of compressed JSON separated by newlines. Similarly, records of likes are one-IP-address-per-line text files with a trailing newline. There hardly is a need for a true database in this application -- my comment system for my html blog, which shares a lot of design ideas with nimlike, doesn't have one either. The big difference is that there, frontend reads the jsonl files directly and takes care of rendering, so less sensitive information is stored. There's no frontend in Gemini space, so nimlike takes care of it by itself.
 
-Each URL's "database" is a single file. The names of the files are sha1 hashes of their URL, so it's irrelevant what you get up to in your url names. If you need to move a post to a new URL, you will have to figure out the new hash (just leave a like and see which file got created) and rename the files.
+Each URL's "database" is a single file. The names of the files are sha1 hashes of their URL, so it's irrelevant what you get up to in your URLs or how long they are. If you need to move a post to a new URL, you will have to figure out the new hash (just leave a like and see which file got created) and rename the files.
 
 This allows you to keep the database in a git repository, as well as do mass edits on it with existing command-line tools and things like [jq](https://stedolan.github.io/jq/).
 
@@ -144,6 +144,7 @@ data=/home/mihara/Projects/blog/gemini-nimlike/
 ;; forbid regexps below.
 ;;
 ;; Needs to be written with r"" like that to work, that's Nim syntax.
+;; The syntax for the regular expression itself is standard PCRE.
 allow = r"\.gmi$"
 
 ;; Salt for the emoji hash function.
