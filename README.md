@@ -9,22 +9,24 @@ This is *slightly* less of a toy project than gemlikes claims to be, meaning tha
 * Page titles on comment pages are read from actual pages, and filenames are used only if the actual pages don't have a level 1 header.
 * Comments can contain newlines and links.
 * What passes for a database is more resilient to user input.
-* Comments require a client certificate to enter, likes do not.
+* Comments require a client certificate to enter by default, you can turn this off. Likes do not.
 * Comments handle nicknames more gracefully.
 * When a nickname isn't given, a nickname for comment author is extracted from their certificate itself, if possible.
-* Identifying markers of comment authors -- that is, client certificate hashes -- are further hashed with a salt, and rendered as a string of emoji, preventing impersonation of people who wrote comments previously.
+* Identifying markers of comment authors -- that is, client certificate hashes, or IP addresses, if you turned off certificate requirement -- are further hashed with a salt, and rendered as a string of emoji, preventing impersonation of people who wrote comments previously.
 * You don't have to keep the configuration file inside gemini server root, so nobody can read your salt or learn things about your directory structure from it.
 
 You might not care about these, it is a matter of taste. But if you do, I hope this comes in useful.
 
 ## Installation
 
-Nimlike is, as the name implies, written in [Nim](https://nim-lang.org/), which is my current language of choice for jobs like these. Currently there are no released static binaries -- they're very much possible, but I don't feel it's ready to be used by people who are just looking for a quick solution, just yet. At the time of writing it's about a day old.
+You can use the statically compiled binaries from the releases page. Currently, only binaries for Linux x64 and Raspberry x32 are provided.
 
-You will have to compile it from source by getting Nim installed and building it yourself:
+## Compilation
+
+Nimlike is, as the name implies, written in [Nim](https://nim-lang.org/), which is my current language of choice for jobs like these. You can compile it from source by getting Nim installed and building it yourself:
 
 ``` shell
-nimble build -d:release
+nimble build -d:release -d:strip
 ```
 
 This results in a single `nimlike` binary which goes into your server's cgi-bin location and can be named whatever you like.
@@ -35,7 +37,10 @@ This results in a single `nimlike` binary which goes into your server's cgi-bin 
 
 * Your Gemini server must support CGI. Obviously. Not all of them do.
 * It must correctly follow the [CGI standard](https://datatracker.ietf.org/doc/html/rfc3875). In particular, it must handle [PATH_INFO](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.5) and [SCRIPT_NAME](https://datatracker.ietf.org/doc/html/rfc3875#section-4.1.13) variables properly.
-* While there's no gemini standard for gemini-specific variables -- some things in the CGI standard obviously don't apply, while there's some debate on where the things specific to Gemini, like client certificate information, should go -- `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate, and either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must contain a certificate identification string -- the one that looks like `/CN=foo/emailAddress=....`. `TLS_CLIENT_HASH` must contain the certificate hash.
+* If you're requiring client certificates to comment, which is the default, some extra non-standard variables must be set. There's no gemini standard for gemini-specific variables -- some things in the CGI standard obviously don't apply, while there's some debate on where the things specific to Gemini, like client certificate information, should go.
+  * `AUTH_INFO` must contain the string `Certificate` if the user is presenting a client certificate.
+  * Either `TLS_CLIENT_SUBJECT` or `REMOTE_USER` must contain a certificate identification string -- the one that looks like `/CN=foo/emailAddress=....`.
+  * `TLS_CLIENT_HASH` must contain the certificate hash.
 
 To my knowledge, [Molly Brown](https://tildegit.org/solderpunk/molly-brown) and [gmid](https://github.com/omar-polo/gmid) both qualify, but there's a lot of gemini servers out there and I don't know if yours does. The only one actually tested with so far is gmid. If a given popular server does something else with this information, I could see about adapting nimlike to handle it as well, but no promises. As long as it passes on everything required, it can be done.
 
@@ -54,7 +59,7 @@ There is currently very little of that, but client certificates should at least 
 * A post can only be liked by a given IP address once.
 * You can set the maximum number of comments a given IP address (rather than certificate) may leave per post.
 
-I am of a mind that, barring the actual security holes, reacting to people actually engaging in abuse, rather than preventively trying to block legitimate things they *might* try to do too much, makes more sense for a hobby tool like that.
+I am of a mind that, barring the actual security holes, reacting to people actually engaging in abuse, rather than preventively trying to block legitimate things they *might* abuse, makes more sense for a hobby tool like that. [Clbuttic mistakes](https://thedailywtf.com/articles/The-Clbuttic-Mistake-) are best avoided.
 
 That said, it is very much recommended to disallow access to `nimlike` in your `robots.txt`:
 
@@ -81,16 +86,16 @@ This post was ❤️ by 1 readers.
 > I have written a most marvelous proof, which this margin is too narrow to contain.
 => https://google.com See google
 
-ID hash: ❤️🖥🦀💕
+ID hash: ✡🛥🗡⏮🎳
 ────
 
 ## Writing comments:
 * Leaving a like or comment records your IP address, for obvious reasons. It's never shown to anyone.
-* You need to present a client certificate to leave an actual comment.
 * Newlines are allowed in comments, if your browser can send them. Gemini links will work, if put on a separate line.
 * You can state a nickname by starting your comment with "<nickname>:<space or newline>"
+* You need to present a client certificate to leave a comment.
 * If you don't supply a nickname, it will be taken from your certificate's UID or CN.
-* If your certificate doesn't have any of those, you will be called "Anonymous".
+* If a nickname cannot be determined, you will be called "Anonymous".
 
 => /cgi-bin/nimlike/like/archive/my-cool-post.gmi ❤️ Like this post
 => /cgi-bin/nimlike/comment/archive/my-cool-post.gmi 💬 Add a comment
@@ -120,6 +125,12 @@ This allows you to keep the database in a git repository, as well as do mass edi
 
 At the moment, if you don't like the particular rendering of the comment page, you still need to edit the source code, but if there's enough demand for it, I might adopt a templating language for the purpose.
 
+## A note on regular expressions
+
+The regular expression library used in Nimlike is *not* PCRE -- I had to use an alternate one, because PCRE was interfering with static compilation. It should be closely compatible, with the exception of backreferences, which you aren't likely to need, since it's primarily used for matching filenames anyway.
+
+You can check the full documentation for [nim-regex](https://nitely.github.io/nim-regex/regex.html) for the specifics.
+
 ## Configuration
 
 On startup, nimlike looks for a configuration file. If the environment variable `NIMLIKE_CONFIG_FILE` is set to a file name, (absolute path please) configuration will be loaded from there. Gmid, for one, allows you to set CGI environment variables in server config, and others might have a similar feature -- or, if they pass their own environment variables to their cgi children, you could set it above them.
@@ -148,7 +159,7 @@ data=/home/mihara/Projects/blog/gemini-nimlike/
 ;; the forbid regexps below.
 ;;
 ;; Needs to be written with r"" like that to work, that's Nim syntax.
-;; The syntax for the regular expression itself is standard PCRE.
+;; The syntax for the regular expression itself is (more or less) PCRE.
 allow = r"\.gmi$"
 
 ;; Salt for the emoji hash function.
@@ -164,6 +175,10 @@ anonymous = Anonymous
 ;; By default, there is no limit to how many comments a given IP address may
 ;; leave per post. You can set it by uncommenting this value.
 ;comment_limit = 5
+
+;; You can disable the requirement for client certificates to leave a comment
+;; by setting this option to true. By default it's false.
+;disable_certs = true
 
 [forbid]
 ;; A list, one per line, of URL regexps, leading slash excluded, on which comments

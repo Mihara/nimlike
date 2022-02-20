@@ -1,6 +1,6 @@
 import os
 import strutils
-import re
+import regex
 
 proc validateFile*(filename, server_root, allowed: string,
                    forbiddenUrls: seq[string]): string =
@@ -62,12 +62,12 @@ proc dbFailure*() =
   echo "42 Could not save data for some reason.\r"
   quit(QuitFailure)
 
-proc readFailure*() =
-  echo "42 Could not read data for some reason.\r"
-  quit(QuitFailure)
-
 proc doFailure*(msg: string) =
   echo "50 ", msg, "\r"
+  quit(QuitFailure)
+
+proc doFailure*(errno: int, msg: string) =
+  echo errno, " ", msg, "\r"
   quit(QuitFailure)
 
 func booleanCfg*(s: string): bool =

@@ -16,24 +16,28 @@ proc emojiHash*(s: string): string =
   #[ Eventually I got fed up trying to do arbitrary length integers
   and bit-shifting, and opted for something easier.
 
-  We have 20 bytes in sha1, so we can have 4 chunks of 5 bytes.  Just convert
-  each chunk into a float between 0 and 1, mapping 0 to 0 and 1 to max 5 byte
+  We have 20 bytes in sha1, so we can have 5 chunks of 4 bytes.  Just convert
+  each chunk into a float between 0 and 1, mapping 0 to 0 and 1 to max 4 byte
   unsigned int.  Then map those over the list of emoji we have selected for
   this.
 
-  Is this a correct baseN implementation? Not really. Will it work and give
-  unambiguous results? Yes. ]#
+  Is this a correct baseN implementation? Very much no. Will it work and give
+  unambiguous results? Yes. I had to jump hoops to get it to work on 32 bit
+  systems, though. Which, unfortunately, your typical Raspberry is. ]#
 
   var thatHash = newSha1State()
   thatHash.update(s)
   let rawHash = thatHash.finalize()
 
-  # This is kinda bullshit if you ask me: I can't *just* toFloat an int64.
-  const maxCell = toFloat(int(0xffffffffff))
+  const maxCell = float(0xffffffff)
 
-  for chunk in 0..3:
-    var chunkSum = 0
-    for cell in 0..4:
-      chunkSum += int(rawHash[chunk*5+cell]) shl (cell*8)
-    result &= alphabet[int((toFloat(chunkSum) / maxCell) *
+  for chunk in 0..4:
+    var chunkSum: uint64
+    for cell in 0..3:
+      chunkSum += uint(rawHash[chunk*4+cell]) shl (cell*8)
+    result &= alphabet[int((float(chunkSum) / maxCell) *
     (len(alphabet) - 1))]
+
+when isMainModule:
+  echo emojihash("This is a string.")
+  doAssert emojihash("This is a string.") == "🐯🐏🙇🌕🎙"

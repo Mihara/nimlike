@@ -36,35 +36,43 @@ func likesFilename(slug: string): string =
 ## are supposed to be atomic, the value of PIPE_BUF is at least 4kb,
 ## and the maximum length of an URL in Gemini is 1024 bytes.
 
-proc saveComment*(directory, target: string, data: Comment): bool =
-  var f: File
-  result = open(f, directory / commentsFilename(target), fmAppend)
-  if result:
+proc saveComment*(directory, target: string, data: Comment) =
+  try:
+    let f = open(directory / commentsFilename(target), fmAppend)
     f.writeLine(toJson(data))
     f.flushFile()
     f.close()
+  except IOError:
+    echo "42 Could not write to comments database.\r"
+    quit(QuitFailure)
 
 proc readComments*(directory, target: string): seq[Comment] =
   let fn = directory / commentsFilename(target)
   if not os.fileExists(fn):
     return
-  for line in readFile(fn).split({'\n'}):
-    try:
-      result.add(fromJson[Comment](parseJson(line)))
-    except JsonParsingError:
-      continue
+  try:
+    for line in readFile(fn).split({'\n'}):
+      try:
+        result.add(fromJson[Comment](parseJson(line)))
+      except JsonParsingError:
+        continue
+  except IOError:
+    echo "42 Could not read comments database.\r"
+    quit(QuitFailure)
 
 ## Likes 'database' is just a text file with one IP address per line.
 ## If you're editing them manually, make sure there is a newline at the end,
 ## or the count will be off by one.
 
-proc saveLike*(directory, target: string, ip: string): bool =
-  var f: File
-  result = open(f, directory / likesFilename(target), fmAppend)
-  if result:
+proc saveLike*(directory, target: string, ip: string) =
+  try:
+    let f = open(directory / likesFilename(target), fmAppend)
     f.writeLine(ip)
     f.flushFile()
     f.close()
+  except IOError:
+    echo "42 Could not write to likes database.\r"
+    quit(QuitFailure)
 
 proc validLike*(directory, target: string, ip: string): bool =
   # If we don't have a db for it, all likes are valid.
@@ -72,17 +80,25 @@ proc validLike*(directory, target: string, ip: string): bool =
   let fn = directory / likesFilename(target)
   if not os.fileExists(fn):
     return
-  for thatIP in readFile(fn).split({'\n'}):
-    if thatIP == ip:
-      result = false
-      break
+  try:
+    for thatIP in readFile(fn).split({'\n'}):
+      if thatIP == ip:
+        result = false
+        break
+  except IOError:
+    echo "42 Could not read likes database.\r"
+    quit(QuitFailure)
 
 proc countLikes*(directory, target: string): int =
   let fn = directory / likesFilename(target)
   if not os.fileExists(fn):
     return
   # There will always be an extra newline at the end of file.
-  result = readFile(fn).countLines() - 1
+  try:
+    result = readFile(fn).countLines() - 1
+  except IOError:
+    echo "42 Could not read likes database.\r"
+    quit(QuitFailure)
   # but just in case, we turn a negative into a 0.
   if result < 0:
     result = 0

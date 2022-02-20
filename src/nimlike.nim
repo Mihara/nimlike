@@ -5,7 +5,7 @@ import std/times
 import std/uri
 
 import strutils
-import re
+import regex
 import tables
 import sequtils
 import sugar
@@ -25,7 +25,11 @@ set it above them) it will be loaded from there, so there's no need to keep
 potentially sensitive configuration files below server root. Otherwise,
 nimlike.ini will be sought in the current directory. ]#
 
-let cfg = loadConfig(os.getEnv("NIMLIKE_CONFIG_FILE", "nimlike.ini"))
+let configFileName = os.getEnv("NIMLIKE_CONFIG_FILE", "nimlike.ini")
+let cfg = try: loadConfig(configFileName)
+          except IOError:
+            echo "42 Could not open configuration file!\r"
+            quit(QuitFailure)
 
 let server_root = os.absolutePath(cfg.getSectionValue("nimlike",
     "server_root", os.getCurrentDir()), "/")
@@ -36,6 +40,8 @@ let defaultNickname = cfg.getSectionValue("nimlike", "anonymous",
     "Incognito")
 let disableLikes = booleanCfg(cfg.getSectionValue(
   "nimlike", "disable_likes", "false"))
+let disableCerts = booleanCfg(cfg.getSectionValue(
+  "nimlike", "disable_certs", "false"))
 let commentLimit = intCfg(cfg.getSectionValue("nimlike", "comment_limit", "0"))
 
 # Load the list of forbidden url regexps.
@@ -48,8 +54,7 @@ let parts = getPathInfo().strip(chars = {'/'}, trailing = false).split('/', 1)
 
 # If it didn't split properly, bail.
 if len(parts) != 2:
-  echo "59 Malformed URL. What exactly are you trying to do?...\r"
-  quit(QuitFailure)
+  doFailure(59, "Malformed URL. What exactly are you trying to do?...")
 
 # If you're using pretty URLs, i.e. rely on index.gmi expansion of
 # directories, -- not common in gemini space, but happens -- this should
@@ -62,8 +67,7 @@ let targetFile = validateFile(
 
 # If we got pointed at an invalid target, bail.
 if not ?targetFile:
-  echo "59 No likes or comments allowed here.\r"
-  quit(QuitFailure)
+  doFailure(59, "No likes or comments allowed here.")
 
 let targetUrl = parts[1].strip()
 let command = parts[0]
@@ -80,9 +84,21 @@ proc reShow() =
 case command
 of "show":
 
-  # Borrow the page title from the file we were called for.
-  let header = getFileHeader(targetFile)
+  # Borrow the page title from the file we were called for.  Needs to be done
+  # before we print the header, so that we can report the proper error in case
+  # of read failure.
+  let header = try: getFileHeader(targetFile)
+               except IOError:
+                 echo "42 Could not read ", targetFile, "\r"
+                 quit(QuitFailure)
 
+  # Read the comments and likes before we print the header, for the same
+  # reason.
+  let comments = readComments(datadir, targetUrl)
+  let likes = if not disableLikes: countLikes(datadir, targetUrl)
+              else: 0
+
+  # Now we start actually rendering.
   echo "20 text/gemini\r"
 
   #[ This, strictly speaking, needs a template engine, but the ones that don't
@@ -93,14 +109,10 @@ of "show":
 
   # Like count
   if not disableLikes:
-    let likes = countLikes(datadir, targetUrl)
     if ?likes:
       echo "This post was ❤️ by $1 readers.\n" % [$likes]
     else:
       echo "No ❤️ so far. 😟\n"
-
-  # And render the comments here.
-  let comments = readComments(datadir, targetUrl)
 
   echo "## Comments:\n"
 
@@ -114,7 +126,10 @@ of "show":
           echo "> ", line
         else:
           echo line
-      echo "\nID hash: ", emojihash(c.hash & salt)
+      echo "\nID hash: ", if disableCerts:
+                            emojihash(c.ip & salt)
+                          else:
+                            emojihash(c.hash & salt)
     echo commentSeparator, "\n"
   else:
     echo "No comments so far.\n"
@@ -122,14 +137,18 @@ of "show":
   echo "## Writing comments:"
   echo "* Leaving a like or comment records your IP address, for obvious ",
        "reasons. It's never shown to anyone."
-  echo "* You need to present a client certificate to leave an actual comment."
   echo "* Newlines are allowed in comments, if your browser can send them. ",
        "Gemini links will work, if put on a separate line."
   echo "* You can state a nickname by starting your comment with ",
         "\"<nickname>:<space or newline>\""
-  echo "* If you don't supply a nickname, it will be taken from your ",
-       "certificate's UID or CN."
-  echo "* If your certificate doesn't have any of those, you ",
+
+  if not disableCerts:
+    echo "* You need to present a client certificate to ",
+     "leave a comment."
+    echo "* If you don't supply a nickname, it will be taken from your ",
+     "certificate's UID or CN."
+
+  echo "* If a nickname cannot be determined, you ",
       "will be called \"$1\".\n" % [defaultNickname]
 
   # I could make them only show to people who can use them,
@@ -143,20 +162,14 @@ of "show":
 
 of "like":
   if disableLikes:
-    echo "59 Likes are disabled around here.\r"
-    quit(QuitFailure)
+    doFailure(59, "Likes are disabled around here.")
 
   let remote = getRemoteAddr()
   # Check if the ip is not in the db already.
-  try:
-    if validLike(datadir, targetUrl, remote):
-      if not saveLike(datadir, targetUrl, remote):
-        dbFailure()
-    else:
-      # Else report an error...
-      doFailure("You cannot give one post all the likes, sorry.")
-  except IOError:
-    readFailure()
+  if validLike(datadir, targetUrl, remote):
+    saveLike(datadir, targetUrl, remote)
+  else:
+    doFailure("You cannot give the same post all the likes.")
 
   reshow()
 
@@ -168,14 +181,12 @@ of "comment":
     let ip = getRemoteAddr()
     if comment_limit <= len(filter(readComments(datadir, targetUrl),
                                    c => c.ip == ip)):
-      echo "59 You have exceeded the allowed number ",
-       "of comments per IP address, sorry.\r"
-      quit(QuitFailure)
+      doFailure(59, "You have reached the allowed number of " &
+        $comment_limit & " comments per IP address per post, sorry.")
 
   # Check if the user has a cert. If they don't, pop back an error.
-  if os.getEnv("AUTH_TYPE") != "Certificate":
-    echo "60 You must use a client certificate to leave a comment.\r"
-    quit(QuitFailure)
+  if not disableCerts and os.getEnv("AUTH_TYPE") != "Certificate":
+    doFailure(60, "You must use a client certificate to leave a comment.")
   # But if they are in fact using one, see if they came with a query string.
   if not ?query:
     # If they didn't, call for input.
@@ -189,13 +200,13 @@ of "comment":
 
   # If they gave a nickname, remember it and excise it from the text.
   # Given nickname always overrides the one from the cert.
-  let nickRe = re"^(.+):[ \n]"
-  var matches: array[1, string]
+  const nickRe = re"^(.+):[ \n]"
+  var matches: RegexMatch
 
-  if query.contains(nickRe, matches):
-    nickname = matches[0]
-    query = query.replace(nickRe)
-  else:
+  if query.find(nickRe, matches):
+    nickname = matches.group(0, query)[0]
+    query.delete(matches.boundaries)
+  elif not disableCerts:
     #[ But if they didn't, fall back on the data from the certificate.
 
     TLS data are not part of the CGI standard, and Gemini standards don't
@@ -230,13 +241,15 @@ of "comment":
         break
 
   # And save it!
-  if not saveComment(datadir, targetUrl, Comment(
+  saveComment(datadir, targetUrl, Comment(
       name: nickname,
-      hash: os.getEnv("TLS_CLIENT_HASH"),
+      # If you disabled certs, nobody will show their cert, so the hash will
+      # just be empty. An empty one gets saved anyway to keep a consistent
+      # database format.
+      hash: os.getEnv("TLS_CLIENT_HASH", ""),
       date: times.now(),
       ip: getRemoteAddr(),
-      text: query)):
-    dbFailure()
+      text: query))
 
   reshow()
 
