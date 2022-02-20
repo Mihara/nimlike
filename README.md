@@ -154,6 +154,10 @@ salt = "moderatelywickedwitchoftheeast"
 ;; The name for commenters for whom a nickname cannot be determined.
 anonymous = Anonymous
 
+;; You can uncomment this to disable like functionality while leaving in the
+;; comments.
+;disable_likes = true
+
 [forbid]
 ;; A list, one per line, of URL regexps, leading slash excluded, on which comments
 ;; and likes are forbidden.

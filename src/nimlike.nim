@@ -25,13 +25,15 @@ nimlike.ini will be sought in the current directory. ]#
 
 let cfg = loadConfig(os.getEnv("NIMLIKE_CONFIG_FILE", "nimlike.ini"))
 
-let server_root = os.absolutePath(cfg.getSectionValue("nimlike", "server_root",
-    os.getCurrentDir()), "/")
+let server_root = os.absolutePath(cfg.getSectionValue("nimlike",
+    "server_root", os.getCurrentDir()), "/")
 let datadir = os.absolutePath(cfg.getSectionValue("nimlike", "data"), "/")
 let salt = cfg.getSectionValue("nimlike", "salt", "thisisabadsalt")
 let allowed = cfg.getSectionValue("nimlike", "allow", r"\.gmi$")
 let defaultNickname = cfg.getSectionValue("nimlike", "anonymous",
     "Incognito")
+let disableLikes = booleanCfg(cfg.getSectionValue(
+  "nimlike", "disable_likes", "false"))
 
 # Load the list of forbidden url regexps.
 var forbiddenUrls: seq[string]
@@ -81,27 +83,29 @@ of "show":
   echo "20 text/gemini\r"
 
   #[ This, strictly speaking, needs a template engine, but the ones that don't
-     introduce any overhead are just a bit too simple, while ones that are
-     flexible enough are not worth it for just one template. ]#
+    introduce any overhead are just a bit too simple, while ones that are
+    flexible enough are not worth it for just one template. ]#
 
   echo "# $1\n" % [header]
 
-  # Comment count
-  let likes = countLikes(datadir, targetUrl)
-  if ?likes:
-    echo "This post was ❤️ by $1 readers.\n" % [$likes]
-  else:
-    echo "No ❤️ so far. 😟\n"
+  # Like count
+  if not disableLikes:
+    let likes = countLikes(datadir, targetUrl)
+    if ?likes:
+      echo "This post was ❤️ by $1 readers.\n" % [$likes]
+    else:
+      echo "No ❤️ so far. 😟\n"
 
   # And render the comments here.
   let comments = readComments(datadir, targetUrl)
 
-  const commentSeparator = "────"
+  echo "## Comments:\n"
+
   if ?comments:
-    echo "## Comments:\n"
+    const commentSeparator = "────"
     for c in comments:
       echo "$1 $2: $3 commented,\n" % [commentSeparator,
-                                       c.date.format("yyyy-MM-dd"),  c.name]
+                                       c.date.format("yyyy-MM-dd"), c.name]
       for line in c.text.split({'\n'}):
         if not line.startsWith("=> "):
           echo "> ", line
@@ -109,6 +113,8 @@ of "show":
           echo line
       echo "\nID hash: ", emojihash(c.hash & salt)
     echo commentSeparator, "\n"
+  else:
+    echo "No comments so far.\n"
 
   echo "## Writing comments:"
   echo "* Leaving a like or comment records your IP address, for obvious ",
@@ -126,12 +132,17 @@ of "show":
   # I could make them only show to people who can use them,
   # but is it worth it?...
 
-  echo "=> $1/like/$2 ❤️ Like this post" % [self, targetUrl]
+  if not disableLikes:
+    echo "=> $1/like/$2 ❤️ Like this post" % [self, targetUrl]
   echo "=> $1/comment/$2 💬 Add a comment" % [self, targetUrl]
   echo "=> /$1 ↩ Go back\n" % [targetUrl]
   quit(QuitSuccess)
 
 of "like":
+  if disableLikes:
+    echo "59 Likes are disabled around here.\r"
+    quit(QuitFailure)
+
   let remote = getRemoteAddr()
   # Check if the ip is not in the db already.
   try:

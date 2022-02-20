@@ -69,3 +69,7 @@ proc readFailure*() =
 proc doFailure*(msg: string) =
   echo "50 ", msg, "\r"
   quit(QuitFailure)
+
+func booleanCfg*(s: string): bool =
+  if s.strip().toLower() in ["true", "1", "on", "yes"]:
+    result = true
