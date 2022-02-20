@@ -7,6 +7,8 @@ import std/uri
 import strutils
 import re
 import tables
+import sequtils
+import sugar
 
 import elvis
 
@@ -34,6 +36,7 @@ let defaultNickname = cfg.getSectionValue("nimlike", "anonymous",
     "Incognito")
 let disableLikes = booleanCfg(cfg.getSectionValue(
   "nimlike", "disable_likes", "false"))
+let commentLimit = intCfg(cfg.getSectionValue("nimlike", "comment_limit", "0"))
 
 # Load the list of forbidden url regexps.
 var forbiddenUrls: seq[string]
@@ -158,6 +161,17 @@ of "like":
   reshow()
 
 of "comment":
+
+  # If we have a limit on comment number per IP, check it before we ask the
+  # user for a certificate, and return an error.
+  if ?comment_limit:
+    let ip = getRemoteAddr()
+    if comment_limit <= len(filter(readComments(datadir, targetUrl),
+                                   c => c.ip == ip)):
+      echo "59 You have exceeded the allowed number ",
+       "of comments per IP address, sorry.\r"
+      quit(QuitFailure)
+
   # Check if the user has a cert. If they don't, pop back an error.
   if os.getEnv("AUTH_TYPE") != "Certificate":
     echo "60 You must use a client certificate to leave a comment.\r"

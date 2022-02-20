@@ -73,3 +73,9 @@ proc doFailure*(msg: string) =
 func booleanCfg*(s: string): bool =
   if s.strip().toLower() in ["true", "1", "on", "yes"]:
     result = true
+
+func intCfg*(s: string): int =
+  try:
+    result = parseInt(s)
+  except:
+    discard

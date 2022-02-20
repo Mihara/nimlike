@@ -49,7 +49,10 @@ Failure to observe these assumptions will only mean that for files that don't fi
 
 ## Abuse resistance
 
-There is currently very little of that, but client certificates should at least discourage casual spamming a little. A post can only be liked by a given IP address once, but that's about it.
+There is currently very little of that, but client certificates should at least discourage casual spamming a little.
+
+* A post can only be liked by a given IP address once.
+* You can set the maximum number of comments a given IP address (rather than certificate) may leave per post.
 
 I am of a mind that, barring the actual security holes, reacting to people actually engaging in abuse, rather than preventively trying to block legitimate things they *might* try to do too much, makes more sense for a hobby tool like that.
 
@@ -157,6 +160,10 @@ anonymous = Anonymous
 ;; You can uncomment this to disable like functionality while leaving in the
 ;; comments.
 ;disable_likes = true
+
+;; By default, there is no limit to how many comments a given IP address may
+;; leave per post. You can set it by uncommenting this value.
+;comment_limit = 5
 
 [forbid]
 ;; A list, one per line, of URL regexps, leading slash excluded, on which comments
